@@ -19,27 +19,28 @@ def expected_profit(
 ) -> NDArray[np.float64]:
     r"""Calculate the expected underwriting profit of an insurance portfolio.
 
-    The expected underwriting profit (E[Pi]) is defined under classical risk
-    theory as:
+    Under classical risk theory, expected underwriting profit is defined as
+    the excess of earned premiums over expected aggregate claims and
+    operational expenses:
         E[Pi] = Premium - E[Claims] - Expenses
 
-    If premiums are loaded with a relative safety loading theta such that
-    Premium = (1 + theta) * E[Claims], then in the absence of expenses:
+    If premiums are loaded using the expected value principle with safety loading
+    theta (Premium = (1 + theta) * E[Claims]) and expenses are zero:
         E[Pi] = theta * E[Claims]
 
-    Note:
-        The resulting expected profit can be strictly negative when expected
-        claims (and expenses) exceed premium income, indicating an expected
-        technical underwriting loss (deficit).
+    References:
+        - Bowers, N. et al. (1997). Actuarial Mathematics. Chapter 1.
+        - Daykin, C., Pentikäinen, T., Pesonen, E. (1994). Practical Risk Theory
+          for Actuaries. Section 1.3.
 
     Args:
-        premium: Total earned or loaded premium collected (P >= 0).
-        expected_claims: Expected aggregate claims or losses (E[S] >= 0).
-        expenses: Optional administrative/acquisition expenses (E >= 0).
-            Defaults to 0.0.
+        premium: Total premium collected or loaded premium (P >= 0).
+        expected_claims: Expected aggregate claims or pure risk losses (E[S] >= 0).
+        expenses: Acquisition or administrative expenses (E >= 0). Defaults to 0.0.
 
     Returns:
-        np.ndarray: The resulting expected underwriting profit. Can be negative.
+        np.ndarray: Expected underwriting profit. Can be negative, indicating an
+            expected technical underwriting deficit.
 
     Raises:
         TypeError: If inputs cannot be cast to floating-point numbers.
