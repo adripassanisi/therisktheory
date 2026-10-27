@@ -14,7 +14,7 @@ from therisktheory._validation import (
 
 
 def _std_normal_cdf(x: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Calculate standard normal CDF using erf without pulling scipy.stats dependency."""
+    """Calculate standard normal cumulative distribution function Phi(x)."""
     return 0.5 * (1.0 + erf(x / np.sqrt(2.0)))
 
 
@@ -26,27 +26,39 @@ def finite_horizon_ruin_estimate(
     time_horizon: ArrayLike,
     claim_size_variance: ArrayLike | None = None,
 ) -> NDArray[np.float64]:
-    """Estimate the finite-horizon ruin probability using diffusion approximation.
+    r"""Estimate finite-horizon ruin probability via diffusion approximation.
 
-    Under the Cramér-Lundberg model approximated via Brownian motion with drift:
-        drift = c - lambda * E[X]
-        sigma^2 = lambda * E[X^2]
+    Under the classical Cramér-Lundberg risk process:
+        U(t) = u + c*t - \sum_{i=1}^{N(t)} X_i
+    approximated as a Brownian motion with drift:
+        drift (mu_D) = c - lambda * E[X]
+        variance rate (sigma^2) = lambda * E[X^2] = lambda * (Var(X) + (E[X])^2)
 
-    The probability of ruin before time T is given by:
-        psi(u, T) = Phi((-u - drift*T) / (sigma * sqrt(T)))
-                  + exp(-2 * drift * u / sigma^2) * Phi((-u + drift*T) / (sigma * sqrt(T)))
+    The probability of ruin before time T, psi(u, T) = P(inf_{0 <= t <= T} U(t) < 0),
+    is approximated using the first hitting time distribution:
+        psi(u, T) = Phi((-u - mu_D * T) / (sigma * sqrt(T)))
+                  + exp(-2 * mu_D * u / sigma^2) * Phi((-u + mu_D * T) / (sigma * sqrt(T)))
+
+    References:
+        - Daykin, C., Pentikäinen, T., Pesonen, E. (1994). Practical Risk Theory
+          for Actuaries. Section 3.4 & 8.2 (Diffusion Approximations).
+        - Beard, R., Pentikäinen, T., Pesonen, E. (1984). Risk Theory. Section 3.6.
 
     Args:
         initial_capital: Starting surplus capital (u >= 0).
-        premium_rate: Rate of premium collection per unit time (c >= 0).
-        claim_intensity: Expected claim frequency parameter (lambda >= 0).
-        mean_claim_size: Mean of the claim severity distribution (E[X] > 0).
-        time_horizon: Finite time horizon duration (T >= 0).
-        claim_size_variance: Variance of claim size. If None, assumes exponential claims
-            where Var(X) = (mean_claim_size)^2.
+        premium_rate: Premium income collection rate per unit time (c >= 0).
+        claim_intensity: Expected claim frequency / Poisson intensity (lambda >= 0).
+        mean_claim_size: Expected individual claim severity (E[X] >= 0).
+        time_horizon: Finite time window duration (T >= 0).
+        claim_size_variance: Variance of claim severity Var(X). If None, assumes
+            exponentially distributed claims where Var(X) = (mean_claim_size)^2.
 
     Returns:
-        np.ndarray: The estimated finite-horizon ruin probability in [0, 1].
+        np.ndarray: Estimated ruin probability in [0.0, 1.0].
+
+    Raises:
+        TypeError: If inputs cannot be cast to floating-point numbers.
+        ValueError: If inputs are negative, infinite, or shapes cannot broadcast.
     """
     cap_arr = as_nonnegative_finite_array(initial_capital, "initial_capital")
     prem_arr = as_nonnegative_finite_array(premium_rate, "premium_rate")
@@ -72,21 +84,18 @@ def finite_horizon_ruin_estimate(
         cap_arr, prem_arr, lam_arr, mean_claim_arr, time_arr, var_claim_arr
     )
 
-    # Segundo momento: E[X^2] = Var(X) + (E[X])^2
     second_moment_x = var_x + mu_x**2
-
     drift = c - (lam * mu_x)
     sigma2 = lam * second_moment_x
     sigma = np.sqrt(np.maximum(sigma2, 1e-12))
 
     result = np.zeros_like(cap, dtype=np.float64)
 
-    # Casos límite
+    # Boundary conditions
     zero_time = t <= 0.0
     zero_cap = cap <= 0.0
     valid_mask = (~zero_time) & (~zero_cap)
 
-    # Ruina segura o nula en casos de frontera
     result[zero_cap & (~zero_time)] = 1.0
     result[zero_time] = 0.0
 
@@ -102,7 +111,8 @@ def finite_horizon_ruin_estimate(
         exponent = -2.0 * mu_v * u_v / (sig_v**2)
         exponent = np.clip(exponent, -700.0, 700.0)
 
-        term2 = np.exp(exponent) * _std_normal_cdf((-u_v + mu_v * t_v) / sig_sqrt_t)
+        cdf2 = _std_normal_cdf((-u_v + mu_v * t_v) / sig_sqrt_t)
+        term2 = np.where(cdf2 == 0.0, 0.0, np.exp(exponent) * cdf2)
 
         prob = term1 + term2
         result[valid_mask] = np.clip(prob, 0.0, 1.0)
