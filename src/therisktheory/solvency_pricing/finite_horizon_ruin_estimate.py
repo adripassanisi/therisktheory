@@ -1,10 +1,10 @@
-""""Finite horizon ruin estimate module for TheRiskTheory."""
+"""Finite horizon ruin estimate module for TheRiskTheory."""
 
 from __future__ import annotations
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.stats import norm
+from scipy.special import erf
 
 from therisktheory._validation import (
     as_nonnegative_finite_array,
@@ -13,107 +13,98 @@ from therisktheory._validation import (
 )
 
 
+def _std_normal_cdf(x: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Calculate standard normal CDF using erf without pulling scipy.stats dependency."""
+    return 0.5 * (1.0 + erf(x / np.sqrt(2.0)))
+
+
 def finite_horizon_ruin_estimate(
     initial_capital: ArrayLike,
     premium_rate: ArrayLike,
     claim_intensity: ArrayLike,
     mean_claim_size: ArrayLike,
-    std_claim_size: ArrayLike,
     time_horizon: ArrayLike,
+    claim_size_variance: ArrayLike | None = None,
 ) -> NDArray[np.float64]:
-    r"""Estimate the probability of ruin over a finite time horizon.
+    """Estimate the finite-horizon ruin probability using diffusion approximation.
 
-    Approximates the finite-horizon ruin probability :math:`\psi(u, T)` of the
-    classical Cramér-Lundberg risk process using the Brownian diffusion approximation
-    (Grandell, 1991; Asmussen, 2000).
+    Under the Cramér-Lundberg model approximated via Brownian motion with drift:
+        drift = c - lambda * E[X]
+        sigma^2 = lambda * E[X^2]
 
-    The surplus process :math:`U(t) = u + ct - S(t)` is approximated by a Brownian
-    motion with drift:
-        :math:`dU(t) = \mu dt + \sigma dW(t)`
-    where:
-        - Net drift: :math:`\mu = c - \lambda \mathbb{E}[X]`
-        - Volatility: :math:`\sigma^2 = \lambda \mathbb{E}[X^2] = \lambda (\text{Var}(X) + \mathbb{E}[X]^2)`
-
-    The first passage time distribution to zero yields the approximation:
-        :math:`\psi(u, T) \approx \Phi\left(\frac{-u - \mu T}{\sigma \sqrt{T}}\right)
-        + \exp\left(-\frac{2\mu u}{\sigma^2}\right) \Phi\left(\frac{-u + \mu T}{\sigma \sqrt{T}}\right)`
+    The probability of ruin before time T is given by:
+        psi(u, T) = Phi((-u - drift*T) / (sigma * sqrt(T)))
+                  + exp(-2 * drift * u / sigma^2) * Phi((-u + drift*T) / (sigma * sqrt(T)))
 
     Args:
-        initial_capital: Starting surplus capital (:math:`u \ge 0`).
-        premium_rate: Rate of premium collection per unit time (:math:`c \ge 0`).
-        claim_intensity: Expected claim frequency parameter (:math:`\lambda \ge 0`).
-        mean_claim_size: Expected value of individual claim amounts (:math:`\mathbb{E}[X] \ge 0`).
-        std_claim_size: Standard deviation of individual claim amounts (:math:`\sigma_X \ge 0`).
-        time_horizon: Finite time horizon duration (:math:`T \ge 0`).
+        initial_capital: Starting surplus capital (u >= 0).
+        premium_rate: Rate of premium collection per unit time (c >= 0).
+        claim_intensity: Expected claim frequency parameter (lambda >= 0).
+        mean_claim_size: Mean of the claim severity distribution (E[X] > 0).
+        time_horizon: Finite time horizon duration (T >= 0).
+        claim_size_variance: Variance of claim size. If None, assumes exponential claims
+            where Var(X) = (mean_claim_size)^2.
 
     Returns:
         np.ndarray: The estimated finite-horizon ruin probability in [0, 1].
-
-    Raises:
-        TypeError: If inputs are not real numbers.
-        ValueError: If inputs are negative, infinite, or have incompatible shapes.
     """
     cap_arr = as_nonnegative_finite_array(initial_capital, "initial_capital")
     prem_arr = as_nonnegative_finite_array(premium_rate, "premium_rate")
     lam_arr = as_nonnegative_finite_array(claim_intensity, "claim_intensity")
-    mu_arr = as_nonnegative_finite_array(mean_claim_size, "mean_claim_size")
-    std_arr = as_nonnegative_finite_array(std_claim_size, "std_claim_size")
+    mean_claim_arr = as_nonnegative_finite_array(mean_claim_size, "mean_claim_size")
     time_arr = as_nonnegative_finite_array(time_horizon, "time_horizon")
+
+    if claim_size_variance is None:
+        var_claim_arr = mean_claim_arr**2
+    else:
+        var_claim_arr = as_nonnegative_finite_array(claim_size_variance, "claim_size_variance")
 
     check_broadcastable(
         initial_capital=cap_arr,
         premium_rate=prem_arr,
         claim_intensity=lam_arr,
-        mean_claim_size=mu_arr,
-        std_claim_size=std_arr,
+        mean_claim_size=mean_claim_arr,
         time_horizon=time_arr,
+        claim_size_variance=var_claim_arr,
     )
 
-    # Net drift rate per unit time: mu = c - lambda * E[X]
-    drift = prem_arr - (lam_arr * mu_arr)
+    cap, c, lam, mu_x, t, var_x = np.broadcast_arrays(
+        cap_arr, prem_arr, lam_arr, mean_claim_arr, time_arr, var_claim_arr
+    )
 
-    # Second moment: E[X^2] = Var(X) + (E[X])^2
-    second_moment = (std_arr ** 2) + (mu_arr ** 2)
-    # Infinitesimal variance rate: sigma^2 = lambda * E[X^2]
-    variance_rate = lam_arr * second_moment
-    volatility = np.sqrt(variance_rate)
+    # Segundo momento: E[X^2] = Var(X) + (E[X])^2
+    second_moment_x = var_x + mu_x**2
 
-    # Initialize results
-    result = np.zeros(np.broadcast_shapes(cap_arr.shape, time_arr.shape, drift.shape), dtype=np.float64)
+    drift = c - (lam * mu_x)
+    sigma2 = lam * second_moment_x
+    sigma = np.sqrt(np.maximum(sigma2, 1e-12))
 
-    # Edge case 1: T == 0 (no time elapsed)
-    mask_t_zero = time_arr == 0.0
-    # If T == 0, ruin has not occurred if u >= 0
-    result[mask_t_zero] = 0.0
+    result = np.zeros_like(cap, dtype=np.float64)
 
-    # Edge case 2: lambda == 0 or sigma == 0 (deterministic surplus process)
-    mask_no_vol = (volatility <= 1e-12) & (~mask_t_zero)
-    # Ruin occurs if u + c*t < 0; since u >= 0 and c >= 0, ruin probability is 0
-    result[mask_no_vol] = 0.0
+    # Casos límite
+    zero_time = t <= 0.0
+    zero_cap = cap <= 0.0
+    valid_mask = (~zero_time) & (~zero_cap)
 
-    # General case: positive time and positive volatility
-    mask_eval = (~mask_t_zero) & (~mask_no_vol)
+    # Ruina segura o nula en casos de frontera
+    result[zero_cap & (~zero_time)] = 1.0
+    result[zero_time] = 0.0
 
-    if np.any(mask_eval):
-        u_sub = cap_arr if cap_arr.ndim == 0 else cap_arr[mask_eval]
-        t_sub = time_arr if time_arr.ndim == 0 else time_arr[mask_eval]
-        drift_sub = drift if drift.ndim == 0 else drift[mask_eval]
-        vol_sub = volatility if volatility.ndim == 0 else volatility[mask_eval]
-        var_sub = variance_rate if variance_rate.ndim == 0 else variance_rate[mask_eval]
+    if np.any(valid_mask):
+        u_v = cap[valid_mask]
+        t_v = t[valid_mask]
+        mu_v = drift[valid_mask]
+        sig_v = sigma[valid_mask]
+        sig_sqrt_t = sig_v * np.sqrt(t_v)
 
-        denom = vol_sub * np.sqrt(t_sub)
+        term1 = _std_normal_cdf((-u_v - mu_v * t_v) / sig_sqrt_t)
 
-        arg1 = (-u_sub - (drift_sub * t_sub)) / denom
-        arg2 = (-u_sub + (drift_sub * t_sub)) / denom
+        exponent = -2.0 * mu_v * u_v / (sig_v**2)
+        exponent = np.clip(exponent, -700.0, 700.0)
 
-        phi1 = norm.cdf(arg1)
-        phi2 = norm.cdf(arg2)
+        term2 = np.exp(exponent) * _std_normal_cdf((-u_v + mu_v * t_v) / sig_sqrt_t)
 
-        # Correct formula: exponent has a minus sign (-2 * u * drift / sigma^2)
-        exp_power = np.clip(-2.0 * u_sub * drift_sub / var_sub, -700.0, 700.0)
-        exp_factor = np.exp(exp_power)
-
-        calc_result = phi1 + (exp_factor * phi2)
-        result[mask_eval] = np.clip(calc_result, 0.0, 1.0)
+        prob = term1 + term2
+        result[valid_mask] = np.clip(prob, 0.0, 1.0)
 
     return check_finite_result(result, "finite_horizon_ruin_estimate")
