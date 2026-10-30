@@ -1,20 +1,18 @@
-"""Tests and boundary conditions for Passanisi's solvency and ruin functions."""
+"""Tests and boundary conditions for solvency and ruin functions."""
 
 import numpy as np
 import pytest
 
 from therisktheory.solvency_pricing.expected_profit import expected_profit
-from therisktheory.solvency_pricing.portfolio_equilibrium import portfolio_equilibrium
 from therisktheory.solvency_pricing.finite_horizon_ruin_estimate import (
     finite_horizon_ruin_estimate,
 )
+from therisktheory.solvency_pricing.portfolio_equilibrium import (
+    portfolio_equilibrium,
+)
 
 
-# =========================================================================
-# 1. Tests for expected_profit
-# =========================================================================
-
-def test_expected_profit_mathematical_identity():
+def test_expected_profit_mathematical_identity() -> None:
     """Verify safety loading identity: E[Profit] = theta * E[Claims]."""
     e_claims = 5000.0
     theta = 0.15
@@ -23,8 +21,8 @@ def test_expected_profit_mathematical_identity():
     assert np.isclose(profit, theta * e_claims)
 
 
-def test_expected_profit_allows_negative_result():
-    """Boundary test: Claims exceeding premium results in technical deficit."""
+def test_expected_profit_allows_negative_result() -> None:
+    """Boundary test: Claims exceeding premium results in deficit."""
     premium = 1000.0
     claims = 1800.0
     profit = expected_profit(premium, claims)
@@ -32,69 +30,82 @@ def test_expected_profit_allows_negative_result():
     assert profit < 0.0
 
 
-def test_expected_profit_with_expenses():
+def test_expected_profit_with_expenses() -> None:
     """Verify operational expenses deduction."""
-    profit = expected_profit(premium=2000.0, expected_claims=1200.0, expenses=300.0)
+    profit = expected_profit(
+        premium=2000.0,
+        expected_claims=1200.0,
+        expenses=300.0,
+    )
     assert profit == 500.0
 
 
-# =========================================================================
-# 2. Tests for portfolio_equilibrium (Addressing double counting & negatives)
-# =========================================================================
-
-def test_portfolio_equilibrium_negative_accumulated_profit():
-    """Ensure accumulated technical losses (negative profit) are permitted."""
+def test_portfolio_equilibrium_negative_accumulated_profit() -> None:
+    """Ensure accumulated technical losses are permitted."""
     u = 1500.0
     negative_profit = -400.0
-    surplus = portfolio_equilibrium(initial_capital=u, accumulated_profit=negative_profit)
+    surplus = portfolio_equilibrium(
+        initial_capital=u,
+        accumulated_profit=negative_profit,
+    )
     assert surplus == 1100.0
 
 
-def test_portfolio_equilibrium_insolvency_balance():
+def test_portfolio_equilibrium_insolvency_balance() -> None:
     """Deficit test: Severe loss depletes capital below zero."""
     u = 500.0
     negative_profit = -800.0
-    surplus = portfolio_equilibrium(initial_capital=u, accumulated_profit=negative_profit)
+    surplus = portfolio_equilibrium(
+        initial_capital=u,
+        accumulated_profit=negative_profit,
+    )
     assert surplus == -300.0
 
 
-def test_portfolio_equilibrium_no_double_deduction():
-    """Verify that net profit does not discount claims a second time by default."""
+def test_portfolio_equilibrium_no_double_deduction() -> None:
+    """Verify net profit does not discount claims twice by default."""
     u = 2000.0
-    net_profit = 350.0  # Already net of claims
-    surplus = portfolio_equilibrium(initial_capital=u, accumulated_profit=net_profit)
+    net_profit = 350.0
+    surplus = portfolio_equilibrium(
+        initial_capital=u,
+        accumulated_profit=net_profit,
+    )
     assert surplus == 2350.0
 
 
-def test_portfolio_equilibrium_break_even():
+def test_portfolio_equilibrium_break_even() -> None:
     """Boundary test: Zero initial capital and zero net profit."""
-    surplus = portfolio_equilibrium(initial_capital=0.0, accumulated_profit=0.0)
+    surplus = portfolio_equilibrium(
+        initial_capital=0.0,
+        accumulated_profit=0.0,
+    )
     assert surplus == 0.0
 
 
-# =========================================================================
-# 3. Tests for finite_horizon_ruin_estimate (Addressing the professor's core critique)
-# =========================================================================
+def test_portfolio_equilibrium_invalid_negative_capital() -> None:
+    """Verify that negative initial capital raises ValueError."""
+    with pytest.raises(ValueError):
+        portfolio_equilibrium(
+            initial_capital=-100.0,
+            accumulated_profit=50.0,
+        )
 
-def test_finite_ruin_sensitivity_to_claim_intensity():
-    """Mathematical property: Ruin probability MUST increase with higher frequency (lambda).
-    
-    This directly proves the fix to Prof. Pitta's observation that two portfolios
-    with different claim intensities had identical ruin estimates.
-    """
+
+def test_finite_ruin_sensitivity_to_claim_intensity() -> None:
+    """Verify ruin probability increases with higher frequency lambda."""
     u = 50.0
     c = 15.0
     mean_x = 1.0
     t = 10.0
 
-    psi_low_lambda = finite_horizon_ruin_estimate(
+    psi_low = finite_horizon_ruin_estimate(
         initial_capital=u,
         premium_rate=c,
         claim_intensity=5.0,
         mean_claim_size=mean_x,
         time_horizon=t,
     )
-    psi_high_lambda = finite_horizon_ruin_estimate(
+    psi_high = finite_horizon_ruin_estimate(
         initial_capital=u,
         premium_rate=c,
         claim_intensity=12.0,
@@ -102,13 +113,11 @@ def test_finite_ruin_sensitivity_to_claim_intensity():
         time_horizon=t,
     )
 
-    assert psi_high_lambda > psi_low_lambda, (
-        f"Higher lambda must produce higher ruin probability: {psi_high_lambda} <= {psi_low_lambda}"
-    )
+    assert psi_high > psi_low
 
 
-def test_finite_ruin_boundary_zero_capital():
-    """Boundary case: u = 0 implies immediate ruin (psi = 1.0) for positive time."""
+def test_finite_ruin_boundary_zero_capital() -> None:
+    """Boundary case: u = 0 implies immediate ruin (psi = 1.0)."""
     psi = finite_horizon_ruin_estimate(
         initial_capital=0.0,
         premium_rate=10.0,
@@ -119,8 +128,8 @@ def test_finite_ruin_boundary_zero_capital():
     assert np.isclose(psi, 1.0)
 
 
-def test_finite_ruin_boundary_zero_time():
-    """Boundary case: T = 0 with u > 0 implies zero probability of ruin."""
+def test_finite_ruin_boundary_zero_time() -> None:
+    """Boundary case: T = 0 with u > 0 implies psi = 0.0."""
     psi = finite_horizon_ruin_estimate(
         initial_capital=100.0,
         premium_rate=10.0,
@@ -131,8 +140,8 @@ def test_finite_ruin_boundary_zero_time():
     assert np.isclose(psi, 0.0)
 
 
-def test_finite_ruin_vectorization():
-    """Test multi-dimensional array support (NumPy vectorization standard)."""
+def test_finite_ruin_vectorization() -> None:
+    """Test multi-dimensional array support and monotonicity."""
     u_vec = np.array([10.0, 50.0, 100.0])
     psi = finite_horizon_ruin_estimate(
         initial_capital=u_vec,
@@ -142,5 +151,4 @@ def test_finite_ruin_vectorization():
         time_horizon=5.0,
     )
     assert psi.shape == (3,)
-    # Ruin probability must decrease as capital increases (monotonicity)
     assert psi[0] >= psi[1] >= psi[2]
