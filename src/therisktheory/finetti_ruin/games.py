@@ -7,7 +7,6 @@ Reference:
 
 from __future__ import annotations
 
-import dataclasses
 import operator
 from typing import TYPE_CHECKING
 
