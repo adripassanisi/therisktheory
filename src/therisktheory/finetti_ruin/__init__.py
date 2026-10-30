@@ -36,4 +36,4 @@ __all__ = [
     "unfair_game_expectation",
     "unit_step_adjustment_coefficient",
     "validate_de_finetti_identity",
-]"""De Finetti theory, games, reserves, and ruin probability."""
+]
