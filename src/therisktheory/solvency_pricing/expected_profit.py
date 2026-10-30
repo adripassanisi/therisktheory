@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 
 from therisktheory._validation import (
     as_nonnegative_finite_array,
@@ -11,40 +11,34 @@ from therisktheory._validation import (
     check_finite_result,
 )
 
+if TYPE_CHECKING:
+    import numpy.typing as npt
+
 
 def expected_profit(
-    premium: ArrayLike,
-    expected_claims: ArrayLike,
-    expenses: ArrayLike = 0.0,
-) -> NDArray[np.float64]:
-    r"""Calculate the expected underwriting profit of an insurance portfolio.
+    premium: npt.ArrayLike,
+    expected_claims: npt.ArrayLike,
+    expenses: npt.ArrayLike = 0.0,
+) -> npt.NDArray[np.float64]:
+    r"""Calculate expected underwriting profit of an insurance portfolio.
 
     Under classical risk theory, expected underwriting profit is defined as
     the excess of earned premiums over expected aggregate claims and
     operational expenses:
         E[Pi] = Premium - E[Claims] - Expenses
 
-    If premiums are loaded using the expected value principle with safety loading
-    theta (Premium = (1 + theta) * E[Claims]) and expenses are zero:
-        E[Pi] = theta * E[Claims]
-
-    References:
-        - Bowers, N. et al. (1997). Actuarial Mathematics. Chapter 1.
-        - Daykin, C., Pentikäinen, T., Pesonen, E. (1994). Practical Risk Theory
-          for Actuaries. Section 1.3.
-
     Args:
         premium: Total premium collected or loaded premium (P >= 0).
-        expected_claims: Expected aggregate claims or pure risk losses (E[S] >= 0).
-        expenses: Acquisition or administrative expenses (E >= 0). Defaults to 0.0.
+        expected_claims: Expected aggregate claims or losses (E[S] >= 0).
+        expenses: Acquisition or administrative expenses (E >= 0).
+            Defaults to 0.0.
 
     Returns:
-        np.ndarray: Expected underwriting profit. Can be negative, indicating an
-            expected technical underwriting deficit.
+        np.ndarray: Expected underwriting profit. Can be negative.
 
     Raises:
         TypeError: If inputs cannot be cast to floating-point numbers.
-        ValueError: If inputs are negative, infinite, or have incompatible shapes.
+        ValueError: If inputs are negative, infinite, or shapes mismatch.
     """
     prem_arr = as_nonnegative_finite_array(premium, "premium")
     claims_arr = as_nonnegative_finite_array(expected_claims, "expected_claims")
