@@ -1,33 +1,29 @@
-"""Example: Solvency, pricing, and finite-horizon ruin estimation.
+"""Example: Solvency, pricing, and finite-horizon ruin estimation."""
 
-Author: Adrianna Passanisi
-Topic 1: Solvency, Pricing, Retention, and Ruin.
-"""
-
-import numpy as np
-
-from therisktheory.solvency_pricing import (
-    expected_profit,
+from therisktheory.solvency_pricing.expected_profit import expected_profit
+from therisktheory.solvency_pricing.finite_horizon_ruin_estimate import (
     finite_horizon_ruin_estimate,
+)
+from therisktheory.solvency_pricing.portfolio_equilibrium import (
     portfolio_equilibrium,
 )
 
-# 1. Expected profit with safety loading
+# 1. Expected underwriting profit
 claims = 100_000.0
 loading = 0.20
 premium = (1.0 + loading) * claims
 expenses = 5_000.0
 
 profit = expected_profit(premium, claims, expenses)
-print(f"Expected Underwriting Profit: {profit.item():,.2f}")
+print(f"Expected Profit: {profit.item():,.2f}")
 
-# 2. Portfolio equilibrium balance
+# 2. Portfolio equilibrium surplus
 initial_capital = 50_000.0
 surplus = portfolio_equilibrium(
     initial_capital=initial_capital,
     accumulated_profit=profit,
 )
-print(f"Portfolio Surplus Balance: {surplus.item():,.2f}")
+print(f"Surplus Balance: {surplus.item():,.2f}")
 
 # 3. Finite-horizon ruin probability estimation
 t_horizon = 5.0
@@ -42,14 +38,14 @@ psi = finite_horizon_ruin_estimate(
     mean_claim_size=mean_severity,
     time_horizon=t_horizon,
 )
-print(f"5-Year Ruin Probability psi(u={initial_capital:,.0f}): {psi.item():.6f}")
+print(f"Ruin Probability psi(u): {psi.item():.6f}")
 
 # 4. Deterministic case (Prof. Pitta review scenario: lambda=0, c=0)
-psi_deterministic = finite_horizon_ruin_estimate(
+psi_det = finite_horizon_ruin_estimate(
     initial_capital=1e-7,
     premium_rate=0.0,
     claim_intensity=0.0,
     mean_claim_size=100.0,
     time_horizon=1.0,
 )
-print(f"Deterministic zero-claim ruin probability: {psi_deterministic.item():.1f}")
+print(f"Deterministic ruin: {psi_det.item():.1f}")
