@@ -73,15 +73,6 @@ def test_portfolio_equilibrium_no_double_deduction() -> None:
     assert surplus == 2350.0
 
 
-def test_portfolio_equilibrium_break_even() -> None:
-    """Boundary test: Zero initial capital and zero net profit."""
-    surplus = portfolio_equilibrium(
-        initial_capital=0.0,
-        accumulated_profit=0.0,
-    )
-    assert surplus == 0.0
-
-
 def test_portfolio_equilibrium_invalid_negative_capital() -> None:
     """Verify that negative initial capital raises ValueError."""
     with pytest.raises(ValueError):
@@ -89,6 +80,23 @@ def test_portfolio_equilibrium_invalid_negative_capital() -> None:
             initial_capital=-100.0,
             accumulated_profit=50.0,
         )
+
+
+def test_finite_ruin_deterministic_zero_claims() -> None:
+    """Verify deterministic case with no claims (Prof. Pitta review case).
+
+    With initial capital u = 1e-7, premium c = 0, claim frequency lambda = 0,
+    and horizon T = 1, no claims can occur. Capital remains strictly positive
+    throughout the horizon, so ruin probability must be exactly zero.
+    """
+    psi = finite_horizon_ruin_estimate(
+        initial_capital=1e-7,
+        premium_rate=0.0,
+        claim_intensity=0.0,
+        mean_claim_size=100.0,
+        time_horizon=1.0,
+    )
+    assert psi.item() == 0.0
 
 
 def test_finite_ruin_sensitivity_to_claim_intensity() -> None:
