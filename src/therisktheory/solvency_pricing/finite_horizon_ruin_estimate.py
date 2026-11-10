@@ -38,6 +38,16 @@ def finite_horizon_ruin_estimate(
         drift = c - lambda * E[X]
         sigma^2 = lambda * E[X^2] = lambda * (Var(X) + (E[X])^2)
 
+    When sigma^2 == 0 (e.g. claim_intensity == 0 or deterministic claims),
+    the process is purely deterministic: U(t) = u + c*t >= u > 0, yielding
+    exact zero ruin probability for any positive initial capital u > 0.
+
+    References:
+        - Daykin, C., Pentikäinen, T., Pesonen, E. (1994). Practical Risk Theory
+          for Actuaries. Chapman & Hall. Sections 3.4 & 8.2.
+        - Beard, R., Pentikäinen, T., Pesonen, E. (1984). Risk Theory.
+          Section 3.6.
+
     Args:
         initial_capital: Starting surplus capital (u >= 0).
         premium_rate: Premium income rate per unit time (c >= 0).
@@ -83,22 +93,31 @@ def finite_horizon_ruin_estimate(
     second_moment = var_x + mu_x**2
     drift = c - (lam * mu_x)
     sigma2 = lam * second_moment
-    sigma = np.sqrt(np.maximum(sigma2, 1e-12))
 
     result = np.zeros_like(cap, dtype=np.float64)
 
+    # Boundary conditions
     zero_time = t <= 0.0
     zero_cap = cap <= 0.0
-    valid_mask = (~zero_time) & (~zero_cap)
+    positive_cap = cap > 0.0
+    positive_time = t > 0.0
 
-    result[zero_cap & (~zero_time)] = 1.0
+    # Deterministic trajectory without claims (sigma2 == 0)
+    deterministic_zero_claims = positive_cap & (sigma2 == 0.0)
+
+    # Ruin cases
+    result[zero_cap & positive_time] = 1.0
     result[zero_time] = 0.0
+    result[deterministic_zero_claims] = 0.0
+
+    # Stochastic diffusion regime (sigma2 > 0 and positive time and capital)
+    valid_mask = positive_time & positive_cap & (sigma2 > 0.0)
 
     if np.any(valid_mask):
         u_v = cap[valid_mask]
         t_v = t[valid_mask]
         mu_v = drift[valid_mask]
-        sig_v = sigma[valid_mask]
+        sig_v = np.sqrt(sigma2[valid_mask])
         sig_sqrt_t = sig_v * np.sqrt(t_v)
 
         term1 = _std_normal_cdf((-u_v - mu_v * t_v) / sig_sqrt_t)
