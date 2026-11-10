@@ -1,7 +1,5 @@
 """Example demonstrating full credibility standards and required exposures."""
 
-import numpy as np
-
 from therisktheory.credibility import (
     full_credibility_required_exposure,
     full_credibility_standard,
