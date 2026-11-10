@@ -166,30 +166,35 @@ def validate_de_finetti_identity(
 ) -> npt.NDArray[np.bool_]:
     """Validate mathematical consistency of De Finetti's ruin identity.
 
-    Checks:
-        1. Exact relation: psi(u) == exp(-R * (u + 1)) within tolerance atol.
-        2. Lundberg inequality: psi(u) <= exp(-R * u) + atol.
-        3. Fundamental equation: p * exp(-R) + q * exp(R) == 1 within atol.
+    Normalizes inputs first to support sequences (lists/tuples) properly.
+    Uses strict absolute tolerance (|a - b| <= atol) without relative tolerance.
 
     Args:
-        initial_reserve: Starting reserve u >= 0.
+        initial_reserve: Starting reserve u >= 0 (supports scalar or sequence).
         win_probability: Winning probability p in (0.5, 1.0).
         atol: Absolute numerical tolerance. Defaults to 1e-12.
 
     Returns:
         NumPy boolean array indicating whether theoretical identity holds.
     """
-    terms = de_finetti_theorem_terms(initial_reserve, win_probability)
+    u = _validation.as_nonnegative_finite_array(
+        initial_reserve, "initial_reserve"
+    )
+    p = _validation.as_probability_array(win_probability, "win_probability")
 
-    expected_psi = np.exp(-terms.safety_index * (initial_reserve + 1.0))
-    exact_match = np.isclose(terms.ruin_probability, expected_psi, atol=atol)
+    terms = de_finetti_theorem_terms(u, p)
 
+    # 1. Exact formula equality (strict absolute tolerance)
+    expected_psi = np.exp(-terms.safety_index * (u + 1.0))
+    exact_match = np.abs(terms.ruin_probability - expected_psi) <= atol
+
+    # 2. Lundberg-De Finetti inequality
     bound_holds = terms.ruin_probability <= (terms.upper_bound + atol)
 
-    p_arr = _validation.as_probability_array(win_probability, "win_probability")
-    q_arr = 1.0 - p_arr
+    # 3. Fundamental adjustment coefficient equation
+    q = 1.0 - p
     r = terms.safety_index
-    equation_root = p_arr * np.exp(-r) + q_arr * np.exp(r)
-    root_match = np.isclose(equation_root, 1.0, atol=atol)
+    equation_root = p * np.exp(-r) + q * np.exp(r)
+    root_match = np.abs(equation_root - 1.0) <= atol
 
     return exact_match & bound_holds & root_match
