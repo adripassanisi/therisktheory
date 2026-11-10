@@ -10,6 +10,17 @@ from therisktheory.finetti_ruin import (
 )
 
 
+def test_validate_de_finetti_identity_list_input() -> None:
+    """Verify sequence (list) inputs are normalized without TypeError.
+
+    Explicit test case from Prof. Pitta's review: [0, 1] with p = 0.75.
+    """
+    res = validate_de_finetti_identity([0, 1], 0.75)
+    assert isinstance(res, np.ndarray)
+    assert res.shape == (2,)
+    assert np.all(res)
+
+
 def test_de_finetti_ruin_probability_analytical() -> None:
     """Verify analytical example from Kaas et al. (2008) Section 4.5."""
     res = de_finetti_ruin_probability(initial_reserve=2, win_probability=0.6)
