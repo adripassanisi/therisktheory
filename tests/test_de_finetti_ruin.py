@@ -3,20 +3,10 @@
 import numpy as np
 import pytest
 
-from therisktheory.finetti_ruin.de_finetti_ruin import (
+from therisktheory.finetti_ruin import (
     de_finetti_ruin_probability,
     de_finetti_theorem_terms,
     validate_de_finetti_identity,
-)
-
-# Graceful skip if upstream dependencies (#3 and #5) are not merged yet in master
-pytest.importorskip(
-    "therisktheory.finetti_ruin.de_finetti_safety",
-    reason="Requires Garcia PR #5 to be merged into master",
-)
-pytest.importorskip(
-    "therisktheory.finetti_ruin.games",
-    reason="Requires Bautista PR #3 to be merged into master",
 )
 
 
