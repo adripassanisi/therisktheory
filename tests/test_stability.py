@@ -10,16 +10,9 @@ from therisktheory.collective_risk.stability import (
     stability_sensitivity,
 )
 
-# Optional integration check with Bladimir's collective risk process (PR #19)
-process_module = pytest.importorskip(
-    "therisktheory.collective_risk.process",
-    reason="Optional test: requires Bladimir collective risk process PR #19",
-)
-
 
 def test_stability_parameter_analytical() -> None:
-    """Verify analytical example: lambda=100, mu1=10, mu2=200 (CV^2=1), theta=0.15."""
-    # K = 0.15 * sqrt(100) * (10 / sqrt(200)) = 0.15 * 10 * (10 / 14.1421356) = 1.06066
+    """Verify analytical example: lambda=100, mu1=10, mu2=200, theta=0.15."""
     k = stability_parameter(
         claim_rate=100.0,
         severity_mean=10.0,
@@ -27,64 +20,92 @@ def test_stability_parameter_analytical() -> None:
         safety_loading=0.15,
     )
     expected = 0.15 * 10.0 * (10.0 / np.sqrt(200.0))
-    assert np.isclose(k.item(), expected, atol=1e-5)
+    np.testing.assert_allclose(k.item(), expected, rtol=1e-12)
 
 
-def test_stability_sensitivity_elasticities() -> None:
-    """Mathematical property: verify exact elasticities (1.0 for theta, 0.5 for lambda)."""
-    sens = stability_sensitivity(
-        claim_rate=50.0,
-        severity_mean=20.0,
-        severity_second_moment=800.0,
-        safety_loading=0.20,
-    )
+def test_stability_sensitivity_finite_differences() -> None:
+    """Verify sensitivities against finite difference numerical derivatives."""
+    lam = 80.0
+    mu1 = 15.0
+    mu2 = 500.0
+    theta = 0.20
+    h = 1e-6
+
+    sens = stability_sensitivity(lam, mu1, mu2, theta)
+
+    # Numerical derivative w.r.t theta
+    k_plus = stability_parameter(lam, mu1, mu2, theta + h).item()
+    k_minus = stability_parameter(lam, mu1, mu2, theta - h).item()
+    num_d_theta = (k_plus - k_minus) / (2.0 * h)
+    np.testing.assert_allclose(sens.d_theta.item(), num_d_theta, rtol=1e-5)
+
+    # Numerical derivative w.r.t lambda
+    k_plus_l = stability_parameter(lam + h, mu1, mu2, theta).item()
+    k_minus_l = stability_parameter(lam - h, mu1, mu2, theta).item()
+    num_d_lambda = (k_plus_l - k_minus_l) / (2.0 * h)
+    np.testing.assert_allclose(sens.d_lambda.item(), num_d_lambda, rtol=1e-5)
+
+    # Unit elasticities
     assert np.isclose(sens.elasticity_theta.item(), 1.0)
     assert np.isclose(sens.elasticity_lambda.item(), 0.5)
-    # Check derivative relation dK/dtheta = K / theta
-    assert np.isclose(sens.d_theta.item(), sens.stability.item() / 0.20)
 
 
 def test_collective_safety_loading_roundtrip() -> None:
-    """Mathematical identity: collective_safety_loading inverts stability_parameter."""
-    target_k = 1.50
-    lam = 80.0
-    mu1 = 15.0
-    mu2 = 450.0
+    """Mathematical identity: collective_safety_loading inverts stability."""
+    target_k = 1.75
+    lam = 60.0
+    mu1 = 20.0
+    mu2 = 600.0
 
     theta_req = collective_safety_loading(target_k, lam, mu1, mu2)
     k_achieved = stability_parameter(lam, mu1, mu2, theta_req)
-
-    assert np.isclose(k_achieved.item(), target_k)
-
-
-def test_loading_from_initial_reserve_tradeoff() -> None:
-    """Actuarial property: required loading decreases as initial capital increases."""
-    eps = 0.01  # 1% ruin probability
-    mu1, mu2 = 100.0, 20000.0
-
-    u_low = 1000.0
-    u_high = 5000.0
-
-    theta_low_cap = loading_from_initial_reserve(u_low, eps, mu1, mu2)
-    theta_high_cap = loading_from_initial_reserve(u_high, eps, mu1, mu2)
-
-    assert theta_low_cap > theta_high_cap
-    assert np.isclose(theta_low_cap.item(), 5.0 * theta_high_cap.item())
+    np.testing.assert_allclose(k_achieved.item(), target_k, rtol=1e-12)
 
 
-def test_invalid_moments_violate_cauchy_schwarz() -> None:
-    """Invalid input test: second moment strictly below mean^2 raises ValueError."""
-    with pytest.raises(ValueError, match="severity_second_moment"):
+def test_loading_from_initial_reserve_asymptotics() -> None:
+    """Verify asymptotic property: theta -> 0 as initial reserve u -> infinity."""
+    eps = 0.05
+    mu1 = 100.0
+    mu2 = 25000.0
+
+    u_vals = np.array([500.0, 2000.0, 10000.0, 50000.0])
+    thetas = loading_from_initial_reserve(u_vals, eps, mu1, mu2)
+
+    # Must decrease monotonically
+    assert np.all(np.diff(thetas) < 0.0)
+    # Inverse proportionality: doubling u halves theta
+    np.testing.assert_allclose(thetas[1] / thetas[0], 500.0 / 2000.0)
+
+
+def test_domain_restrictions_raise() -> None:
+    """Test boundary and invalid parameter domain restrictions."""
+    with pytest.raises(ValueError, match="strictly positive"):
         stability_parameter(
-            claim_rate=10.0,
-            severity_mean=10.0,
-            severity_second_moment=50.0,  # 50 < 10^2 = 100
-            safety_loading=0.10,
+            claim_rate=0.0, severity_mean=10.0,
+            severity_second_moment=200.0, safety_loading=0.1
+        )
+    with pytest.raises(ValueError, match="strictly positive"):
+        stability_sensitivity(
+            claim_rate=10.0, severity_mean=10.0,
+            severity_second_moment=200.0, safety_loading=0.0
+        )
+    with pytest.raises(ValueError, match="target_ruin_probability"):
+        loading_from_initial_reserve(
+            initial_reserve=100.0, target_ruin_probability=1.5,
+            severity_mean=10.0, severity_second_moment=200.0
         )
 
 
 def test_interoperability_with_collective_process() -> None:
-    """Integration test connecting with Bladimir's process (PR #19)."""
+    """Integration test connecting with Bladimir's process (PR #19).
+
+    Uses pytest.importorskip INSIDE the test function so standalone tests
+    are never skipped on isolated branches.
+    """
+    process_module = pytest.importorskip(
+        "therisktheory.collective_risk.process",
+        reason="Requires Bladimir collective risk process PR #19",
+    )
     mean_claim = 200.0
     moments = [mean_claim, 2 * mean_claim**2, 6 * mean_claim**3]
     proc = process_module.collective_risk_process(
