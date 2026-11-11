@@ -19,7 +19,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.special import erfinv
 
-from therisktheory import _validation
+from therisktheory._validation import (
+    as_nonnegative_finite_array,
+    as_probability_array,
+    as_real_array,
+    check_broadcastable,
+    check_finite_result,
+)
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -29,7 +35,7 @@ _SQRT_2 = np.sqrt(2.0)
 
 def _compute_z_score(confidence_level: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """Calculate normal z-quantile for two-sided confidence level p in (0, 1)."""
-    p = _validation.as_probability_array(confidence_level, "confidence_level")
+    p = as_probability_array(confidence_level, "confidence_level")
     if np.any(p <= 0.0) or np.any(p >= 1.0):
         raise ValueError("confidence_level must be strictly between 0 and 1.")
     return _SQRT_2 * erfinv(p)
@@ -71,12 +77,12 @@ def full_credibility_standard(
         TypeError: If inputs cannot be converted to real numbers.
         ValueError: If k or p are not in (0, 1), or severity moments are invalid.
     """
-    k_arr = _validation.as_real_array(target_accuracy, "target_accuracy")
+    k_arr = as_real_array(target_accuracy, "target_accuracy")
     if np.any(k_arr <= 0.0) or np.any(k_arr >= 1.0):
         raise ValueError("target_accuracy must be strictly between 0 and 1.")
 
     z_score = _compute_z_score(confidence_level)
-    _validation.check_broadcastable(target_accuracy=k_arr, z=z_score)
+    check_broadcastable(target_accuracy=k_arr, z=z_score)
     k_b, z_b = np.broadcast_arrays(k_arr, z_score)
 
     n_0 = (z_b / k_b) ** 2
@@ -87,21 +93,19 @@ def full_credibility_standard(
             raise ValueError(
                 "Both severity_mean and severity_variance must be provided."
             )
-        mu_x = _validation.as_nonnegative_finite_array(
-            severity_mean, "severity_mean"
-        )
+        mu_x = as_nonnegative_finite_array(severity_mean, "severity_mean")
         if np.any(mu_x <= 0.0):
             raise ValueError("severity_mean must be strictly positive.")
-        var_x = _validation.as_nonnegative_finite_array(
+        var_x = as_nonnegative_finite_array(
             severity_variance, "severity_variance"
         )
-        _validation.check_broadcastable(n0=n_0, mu_x=mu_x, var_x=var_x)
+        check_broadcastable(n0=n_0, mu_x=mu_x, var_x=var_x)
         n_0, mu_x_b, var_x_b = np.broadcast_arrays(n_0, mu_x, var_x)
 
         cv_sq = var_x_b / (mu_x_b**2)
         n_0 = n_0 * (1.0 + cv_sq)
 
-    return _validation.check_finite_result(n_0, "full_credibility_standard")
+    return check_finite_result(n_0, "full_credibility_standard")
 
 
 def full_credibility_required_exposure(
@@ -130,7 +134,7 @@ def full_credibility_required_exposure(
     Raises:
         ValueError: If claim_frequency_rate <= 0 or parameters are out of domain.
     """
-    lam = _validation.as_nonnegative_finite_array(
+    lam = as_nonnegative_finite_array(
         claim_frequency_rate, "claim_frequency_rate"
     )
     if np.any(lam <= 0.0):
@@ -143,10 +147,10 @@ def full_credibility_required_exposure(
         severity_variance=severity_variance,
     )
 
-    _validation.check_broadcastable(lam=lam, n_std=n_std)
+    check_broadcastable(lam=lam, n_std=n_std)
     lam_b, n_std_b = np.broadcast_arrays(lam, n_std)
 
     required_exp = n_std_b / lam_b
-    return _validation.check_finite_result(
+    return check_finite_result(
         required_exp, "full_credibility_required_exposure"
     )
