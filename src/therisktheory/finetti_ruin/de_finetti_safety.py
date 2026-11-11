@@ -10,8 +10,8 @@ from therisktheory.finetti_ruin.adjustment import (
 from therisktheory.finetti_ruin.round_loading import round_safety_loading
 
 if TYPE_CHECKING:
-    import numpy.typing as npt
     import numpy as np
+    import numpy.typing as npt
 
 
 def safety_index(
