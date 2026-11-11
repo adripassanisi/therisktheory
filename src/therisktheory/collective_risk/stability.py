@@ -7,10 +7,11 @@ References:
     - Bühlmann, H. (1970). Mathematical Methods in Risk Theory. Springer.
       Chapter 6: The Risk Process, Section 6.4: Stability criteria.
     - Beard, R., Pentikäinen, T., and Pesonen, E. (1984). Risk Theory.
-      3rd ed. Chapman & Hall. Section 3.2: The stability criterion.
+      3rd ed. Chapman & Hall. Section 3.2: The stability criterion,
+      and Section 3.6: Fluctuation of basic probabilities.
     - Daykin, C., Pentikäinen, T., and Pesonen, E. (1994).
       Practical Risk Theory for Actuaries. Chapman & Hall.
-      Section 3.2 & Section 8.3: Safety loading and reserve relationships.
+      Section 3.2 & Section 8.3: Safety loading and initial reserve.
 """
 
 from __future__ import annotations
@@ -128,7 +129,9 @@ def stability_sensitivity(
         claim_rate, severity_mean, severity_second_moment, safety_loading
     )
     lam = as_nonnegative_finite_array(claim_rate, "claim_rate")
-    theta = as_nonnegative_finite_array(safety_loading, "safety_loading")
+    theta = as_nonnegative_finite_array(
+        safety_loading, "safety_loading"
+    )
 
     if np.any(theta <= 0.0):
         raise ValueError("safety_loading must be strictly positive for sensitivity.")
@@ -205,11 +208,18 @@ def loading_from_initial_reserve(
 ) -> npt.NDArray[np.float64]:
     r"""Calculate safety loading theta required for a given initial reserve.
 
-    Under diffusion/Lundberg approximation with target ruin probability epsilon:
-        \psi(u) \approx \exp\left(-\frac{2 \theta \mu_1 u}{\mu_2}\right) \le \epsilon
-        \implies \theta(u) = \frac{\mu_2 \ln(1 / \epsilon)}{2 \mu_1 u}
+    Under the diffusion approximation to the Cramér-Lundberg process
+    (Daykin et al. 1994, Section 8.3), the asymptotic adjustment coefficient
+    satisfies R \approx 2*theta*mu_1 / mu_2 for moderate loadings theta << 1.
+    Equating the ruin bound psi(u) \approx exp(-R*u) to target ruin
+    probability epsilon yields:
+        theta(u) = \frac{\mu_2 \ln(1 / \epsilon)}{2 \mu_1 u}
 
-    Illustrates the fundamental actuarial trade-off between capital and pricing.
+    Scope and Limitations:
+        - Asymptotic Regime: Best suited for moderate relative safety loadings
+          and non-zero capital reserves. As u -> inf, theta -> 0.
+        - Heavy Tails: For severely heavy-tailed claims where mu_2 is very large,
+          exact Lundberg root solvers are recommended.
 
     Args:
         initial_reserve: Available initial surplus reserve u > 0.
