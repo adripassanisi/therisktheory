@@ -17,7 +17,7 @@ is_valid = validate_de_finetti_identity(u, p)
 
 print(f"Initial reserve u: {u}")
 print(f"Win probability p: {p}")
-print(f"Ruin probability psi(u): {psi:.6f}")
+print(f"Ruin probability psi(u): {psi.item():.6f}")
 print(f"Lundberg bound exp(-R*u): {terms.upper_bound.item():.6f}")
 print(f"Safety index (R): {terms.safety_index.item():.6f}")
 print(f"Surplus drift E[G]: {terms.safety_loading.item():.2f}")
