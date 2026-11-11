@@ -19,20 +19,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from therisktheory import _validation
-
-try:
-    from therisktheory.finetti_ruin.de_finetti_safety import (
-        de_finetti_safety_loading,
-        safety_index,
-    )
-    from therisktheory.finetti_ruin.games import (
-        gambler_ruin_probability,
-    )
-except ImportError:
-    # Graceful fallback when upstream PRs #3 and #5 are pending merge
-    safety_index = None  # type: ignore[assignment]
-    de_finetti_safety_loading = None  # type: ignore[assignment]
-    gambler_ruin_probability = None  # type: ignore[assignment]
+from therisktheory.finetti_ruin.de_finetti_safety import (
+    de_finetti_safety_loading,
+    safety_index,
+)
+from therisktheory.finetti_ruin.games import gambler_ruin_probability
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -83,13 +74,7 @@ def de_finetti_ruin_probability(
         TypeError: If inputs cannot be converted to real numbers.
         ValueError: If u is negative, u or b are non-integers, or shapes
             cannot be broadcast together.
-        RuntimeError: If upstream PR #3 (games.py) is not available.
     """
-    if gambler_ruin_probability is None:
-        raise RuntimeError(
-            "gambler_ruin_probability requires PR #3 to be merged."
-        )
-
     u = _validation.as_nonnegative_finite_array(
         initial_reserve, "initial_reserve"
     )
@@ -145,13 +130,7 @@ def de_finetti_theorem_terms(
     Raises:
         TypeError: If inputs cannot be cast to real numbers.
         ValueError: If u is negative or non-integer, or if p is not in (0.5, 1).
-        RuntimeError: If upstream PR #5 (de_finetti_safety.py) is unavailable.
     """
-    if safety_index is None or de_finetti_safety_loading is None:
-        raise RuntimeError(
-            "safety_index and loading require PR #5 to be merged."
-        )
-
     u = _validation.as_nonnegative_finite_array(
         initial_reserve, "initial_reserve"
     )
@@ -205,14 +184,11 @@ def validate_de_finetti_identity(
 
     terms = de_finetti_theorem_terms(u, p)
 
-    # 1. Exact formula equality (strict absolute tolerance)
     expected_psi = np.exp(-terms.safety_index * (u + 1.0))
     exact_match = np.abs(terms.ruin_probability - expected_psi) <= atol
 
-    # 2. Lundberg-De Finetti inequality
     bound_holds = terms.ruin_probability <= (terms.upper_bound + atol)
 
-    # 3. Fundamental adjustment coefficient equation
     q = 1.0 - p
     r = terms.safety_index
     equation_root = p * np.exp(-r) + q * np.exp(r)
